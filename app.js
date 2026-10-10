@@ -2,7 +2,6 @@ require("dotenv").config();
 
 const express = require("express");
 const ExpressError = require("./utils/ExpressError.js");
-const app = express();
 const mongoose = require("mongoose");
 
 const path = require("path");
@@ -18,33 +17,40 @@ const User = require("./models/user.js");
 const userRouter = require("./routes/user.js");
 const listRouter = require("./routes/listUser.js");
 
+const app = express();
+
+// ====================
+// BASIC APP CONFIG
+// ====================
+
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 
 app.use(express.urlencoded({ extended: true }));
 app.use(methodOverride("_method"));
+
 app.engine("ejs", ejsMate);
+
 app.use(express.static(path.join(__dirname, "public")));
 
-// const store = MongoStore.create({
-//     mongoUrl: process.env.MONGODB_URI,
-//     crypto: {
-//         secret: process.env.SECRET,
-//     },
-//     touchAfter: 24 * 3600,
-// });
+// ====================
+// MONGODB CONNECTION
+// ====================
 
 const clientPromise = mongoose
     .connect(process.env.MONGODB_URI)
     .then(() => {
         console.log("Connected to MongoDB Atlas");
         return mongoose.connection.getClient();
+    })
+    .catch((err) => {
+        console.error("MongoDB connection failed:", err.message);
+        process.exit(1);
     });
 
-clientPromise.catch((err) => {
-    console.error("MongoDB connection failed:", err.message);
-    process.exit(1);
-});
+// ====================
+// SESSION STORE
+// ====================
 
 const store = MongoStore.create({
     clientPromise,
@@ -72,12 +78,21 @@ const sessionOptions = {
 app.use(session(sessionOptions));
 app.use(flash());
 
+// ====================
+// PASSPORT AUTHENTICATION
+// ====================
+
 app.use(passport.initialize());
 app.use(passport.session());
 
 passport.use(new LocalStrategy(User.authenticate()));
+
 passport.serializeUser(User.serializeUser());
 passport.deserializeUser(User.deserializeUser());
+
+// ====================
+// GLOBAL LOCALS
+// ====================
 
 app.use((req, res, next) => {
     res.locals.success = req.flash("success");
@@ -86,31 +101,40 @@ app.use((req, res, next) => {
     next();
 });
 
-async function main() {
-    await mongoose.connect(process.env.MONGODB_URI);
-    console.log("connected to DB");
-}
+// ====================
+// ROUTES
+// ====================
 
-main().catch((err) => {
-    console.error("Database connection failed:", err);
-    process.exit(1);
-});
-
+// Homepage
 app.get("/", (req, res) => {
     res.redirect("/listings");
 });
 
+// User routes
 app.use("/", userRouter);
+
+// Listing routes
 app.use("/listings", listRouter);
+
+// ====================
+// 404 HANDLER
+// ====================
 
 app.all("*", (req, res, next) => {
     next(new ExpressError(404, "Page Not Found"));
 });
 
+// ====================
+// ERROR HANDLER
+// ====================
+
 app.use((err, req, res, next) => {
     console.error(err);
 
-    let { statusCode = 500, message = "Something went wrong" } = err;
+    let {
+        statusCode = 500,
+        message = "Something went wrong",
+    } = err;
 
     // Handle invalid MongoDB ObjectIds
     if (err.name === "CastError") {
@@ -118,8 +142,14 @@ app.use((err, req, res, next) => {
         message = "Listing not found";
     }
 
-    res.status(statusCode).render("error.ejs", { err: { message } });
+    res.status(statusCode).render("error.ejs", {
+        err: { message },
+    });
 });
+
+// ====================
+// START SERVER
+// ====================
 
 const port = process.env.PORT || 8080;
 
