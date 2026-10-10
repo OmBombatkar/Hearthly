@@ -96,6 +96,10 @@ main().catch((err) => {
     process.exit(1);
 });
 
+app.get("/", (req, res) => {
+    res.redirect("/listings");
+});
+
 app.use("/", userRouter);
 app.use("/listings", listRouter);
 
